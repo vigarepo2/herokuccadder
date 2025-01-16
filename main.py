@@ -21,7 +21,6 @@ def install_modules(modules):
 install_modules(required_modules)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key_here'
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins='*')
 
 HTML_TEMPLATE = '''
@@ -96,26 +95,6 @@ HTML_TEMPLATE = '''
             font-size: 12px;
             font-weight: 600;
         }
-        #status {
-            font-size: 14px;
-            padding: 5px 10px;
-            border-radius: 15px;
-            background-color: #15202b;
-        }
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #15202b;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #38444d;
-            border-radius: 4px;
-        }
-        .counter {
-            font-size: 13px;
-            color: #8899a6;
-        }
     </style>
 </head>
 <body>
@@ -182,6 +161,7 @@ HTML_TEMPLATE = '''
             isProcessing = true;
             document.getElementById('startBtn').disabled = true;
             updateStatus('Processing...');
+            document.getElementById('resultsList').innerHTML = '';
             
             for (const cc of ccs) {
                 try {
@@ -237,9 +217,7 @@ async def parseX(data, start, end):
 
 async def make_request(session, url, method="POST", params=None, headers=None, data=None, json_data=None):
     try:
-        async with session.request(
-            method, url, params=params, headers=headers, data=data, json=json_data
-        ) as response:
+        async with session.request(method, url, params=params, headers=headers, data=data, json=json_data) as response:
             return await response.text()
     except Exception as e:
         print(f"Request error: {e}")
@@ -247,7 +225,11 @@ async def make_request(session, url, method="POST", params=None, headers=None, d
 
 async def heroku(cc, api_key, proxy=None):
     try:
-        cc, mon, year, cvv = cc.split("|")
+        cc_data = cc.split("|")
+        if len(cc_data) != 4:
+            return {"status": "error", "message": "Invalid CC format"}
+            
+        cc, mon, year, cvv = cc_data
         guid = str(uuid.uuid4())
         muid = str(uuid.uuid4())
         sid = str(uuid.uuid4())
