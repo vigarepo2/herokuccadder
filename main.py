@@ -1,10 +1,24 @@
-from flask import Flask, render_template_string, request, jsonify
-from flask_socketio import SocketIO
+import os
+import sys
 import aiohttp
 import asyncio
 import json
 import uuid
+from flask import Flask, render_template_string, request, jsonify
+from flask_socketio import SocketIO
 from datetime import datetime
+
+# Auto-install required modules
+required_modules = ['flask', 'flask-socketio', 'aiohttp', 'asyncio', 'eventlet']
+def install_modules(modules):
+    for module in modules:
+        try:
+            __import__(module.replace('-', '_'))
+        except ImportError:
+            print(f"{module} not found. Installing...")
+            os.system(f"{sys.executable} -m pip install {module}")
+            print(f"{module} installed successfully.")
+install_modules(required_modules)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key_here'
@@ -16,69 +30,110 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CC Checker Pro</title>
+    <title>Heroku CC Checker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { 
-            background-color: #1a1a1a; 
-            color: #fff;
+            background-color: #0f1419; 
+            color: #e1e8ed;
+        }
+        .navbar {
+            background-color: #192734;
+            border-bottom: 1px solid #38444d;
         }
         .container-box {
-            border: 1px solid #333;
-            border-radius: 10px;
+            background-color: #192734;
+            border: 1px solid #38444d;
+            border-radius: 12px;
             padding: 20px;
             margin-bottom: 20px;
-            background-color: #2d2d2d;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         .results-container {
             height: 500px;
             overflow-y: auto;
-            background-color: #1a1a1a;
-            border: 1px solid #333;
+            background-color: #15202b;
+            border: 1px solid #38444d;
+            border-radius: 12px;
             padding: 15px;
         }
         .result-item {
             padding: 12px;
             margin: 8px 0;
             border-radius: 8px;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
+            font-family: 'Monaco', monospace;
+            font-size: 13px;
         }
         .success { 
             background-color: #1e4620;
             border-left: 4px solid #28a745;
-            color: #98c699;
         }
         .error { 
             background-color: #461e1e;
             border-left: 4px solid #dc3545;
-            color: #c69898;
         }
         .form-control {
-            background-color: #1a1a1a;
-            border: 1px solid #333;
-            color: #fff;
+            background-color: #15202b;
+            border: 1px solid #38444d;
+            color: #e1e8ed;
         }
         .form-control:focus {
-            background-color: #1a1a1a;
-            border-color: #666;
-            color: #fff;
-            box-shadow: none;
+            background-color: #15202b;
+            border-color: #1da1f2;
+            color: #e1e8ed;
+            box-shadow: 0 0 0 2px rgba(29,161,242,0.2);
+        }
+        .btn-primary {
+            background-color: #1da1f2;
+            border: none;
+        }
+        .btn-primary:hover {
+            background-color: #1a91da;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        #status {
+            font-size: 14px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            background-color: #15202b;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #15202b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #38444d;
+            border-radius: 4px;
+        }
+        .counter {
+            font-size: 13px;
+            color: #8899a6;
         }
     </style>
 </head>
 <body>
-    <div class="container mt-4">
+    <nav class="navbar navbar-dark mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">Heroku CC Checker</span>
+        </div>
+    </nav>
+    <div class="container">
         <div class="row">
             <div class="col-md-6">
                 <div class="container-box">
-                    <h4>CC Input</h4>
+                    <h5 class="mb-3">CC Input</h5>
                     <div class="mb-3">
                         <textarea id="ccInput" class="form-control mb-3" rows="5" 
                             placeholder="Format: 4242424242424242|12|2024|123"></textarea>
                         <div class="d-flex justify-content-between align-items-center">
-                            <span class="text-muted">Cards: <span id="ccCount">0</span>/50</span>
+                            <span class="counter">Cards: <span id="ccCount">0</span>/50</span>
                             <button id="startBtn" class="btn btn-primary">Start Checking</button>
                         </div>
                     </div>
@@ -86,20 +141,22 @@ HTML_TEMPLATE = '''
             </div>
             <div class="col-md-6">
                 <div class="container-box">
-                    <h4>Settings</h4>
+                    <h5 class="mb-3">Settings</h5>
                     <input type="text" id="apiKey" class="form-control mb-3" placeholder="Heroku API Key">
-                    <input type="text" id="proxyInput" class="form-control mb-3" placeholder="Proxy (Optional) - ip:port:user:pass">
+                    <input type="text" id="proxyInput" class="form-control" placeholder="Proxy (Optional) - ip:port:user:pass">
                 </div>
             </div>
         </div>
+        
         <div class="container-box">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h4 class="mb-0">Live Results</h4>
+                <h5 class="mb-0">Live Results</h5>
                 <span id="status" class="text-muted">Ready</span>
             </div>
             <div class="results-container" id="resultsList"></div>
         </div>
     </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script>
         const socket = io();
@@ -157,6 +214,10 @@ HTML_TEMPLATE = '''
                 ${data.message ? `<br>Message: ${data.message}` : ''}
             `;
             resultsList.insertBefore(resultItem, resultsList.firstChild);
+            
+            const ccCount = document.getElementById('ccCount');
+            const currentCount = parseInt(ccCount.textContent) + 1;
+            ccCount.textContent = currentCount;
         });
 
         function updateStatus(message) {
@@ -166,7 +227,6 @@ HTML_TEMPLATE = '''
 </body>
 </html>
 '''
-
 async def parseX(data, start, end):
     try:
         star = data.index(start) + len(start)
@@ -185,13 +245,9 @@ async def make_request(session, url, method="POST", params=None, headers=None, d
         print(f"Request error: {e}")
         return None
 
-async def check_cc(cc, api_key, proxy=None):
+async def heroku(cc, api_key, proxy=None):
     try:
-        cc_data = cc.split("|")
-        if len(cc_data) != 4:
-            return {"status": "error", "message": "Invalid CC format"}
-            
-        cc, mon, year, cvv = cc_data
+        cc, mon, year, cvv = cc.split("|")
         guid = str(uuid.uuid4())
         muid = str(uuid.uuid4())
         sid = str(uuid.uuid4())
@@ -329,7 +385,7 @@ async def handle_check_cc():
     api_key = data.get('api_key')
     proxy = data.get('proxy')
     
-    result = await check_cc(cc, api_key, proxy)
+    result = await heroku(cc, api_key, proxy)
     result['cc'] = cc
     result['timestamp'] = datetime.now().strftime('%H:%M:%S')
     
