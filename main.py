@@ -75,42 +75,257 @@ HTML_TEMPLATE = '''
         async function submitForm() {
             const api_key = document.getElementById('api_key').value;
             const ccInput = document.getElementById('ccs').value.trim();
-            ccs = ccInput.split('\\n').map(cc => cc.trim()).filter(cc => cc !== "");
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Heroku CC Checker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
 
+        body {
+            background: #f0f2f5;
+            color: #1a1a1a;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #1a73e8;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #5f6368;
+            font-weight: 500;
+        }
+
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #1a73e8;
+        }
+
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .btn {
+            background: #1a73e8;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.3s ease;
+        }
+
+        .btn:hover {
+            background: #1557b0;
+        }
+
+        .results {
+            margin-top: 2rem;
+        }
+
+        .result-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid #1a73e8;
+        }
+
+        .status-success { border-left-color: #34a853; }
+        .status-error { border-left-color: #ea4335; }
+        .status-pending { border-left-color: #fbbc05; }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: #5f6368;
+        }
+
+        .result-content {
+            font-family: monospace;
+            white-space: pre-wrap;
+            font-size: 0.9rem;
+        }
+
+        .loader {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        .loader::after {
+            content: '';
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1a73e8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 1rem;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .btn {
+                padding: 0.6rem 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Heroku CC Checker</h1>
+        <form id="ccForm">
+            <div class="input-group">
+                <label for="api_key">API Key</label>
+                <input type="text" id="api_key" placeholder="Enter your Heroku API key" required>
+            </div>
+            <div class="input-group">
+                <label for="ccs">Credit Cards (max 50)</label>
+                <textarea id="ccs" placeholder="Enter cards (one per line)&#10;Format: XXXX|MM|YY|CVV" required></textarea>
+            </div>
+            <button type="button" class="btn" onclick="submitForm()">Check Cards</button>
+        </form>
+        <div class="loader" id="loader"></div>
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        let ccs = [];
+        let currentIndex = 0;
+
+        function showLoader() {
+            document.getElementById('loader').style.display = 'block';
+        }
+
+        function hideLoader() {
+            document.getElementById('loader').style.display = 'none';
+        }
+
+        function addResult(cc, result) {
+            const resultsDiv = document.getElementById('results');
+            const statusClass = result.status === 'success' ? 'status-success' : 
+                              result.status === 'error' ? 'status-error' : 'status-pending';
+            
+            const resultHtml = `
+                <div class="result-card ${statusClass}">
+                    <div class="result-header">
+                        <span>Card: ${cc}</span>
+                        <span>Time: ${result.timestamp}</span>
+                    </div>
+                    <div class="result-content">
+                        Status: ${result.status}
+                        Message: ${result.message}
+                    </div>
+                </div>
+            `;
+            resultsDiv.insertAdjacentHTML('beforeend', resultHtml);
+        }
+
+        async function submitForm() {
+            const api_key = document.getElementById('api_key').value.trim();
+            const ccInput = document.getElementById('ccs').value.trim();
+            
+            if (!api_key || !ccInput) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            ccs = ccInput.split('\\n').map(cc => cc.trim()).filter(cc => cc !== "");
+            
             if (ccs.length === 0 || ccs.length > 50) {
                 alert("Please enter between 1 and 50 credit cards.");
                 return;
             }
 
-            document.getElementById('response').innerText = "Checking cards...\\n";
-            document.getElementById('ccList').innerHTML = "";
+            document.getElementById('results').innerHTML = '';
+            currentIndex = 0;
+            showLoader();
             await checkNextCC(api_key);
+            hideLoader();
         }
 
         async function checkNextCC(api_key) {
-            if (currentIndex >= ccs.length) {
-                document.getElementById('response').innerText += "All credit cards checked.";
-                return;
-            }
+            if (currentIndex >= ccs.length) return;
 
             const cc = ccs[currentIndex];
-            document.getElementById('ccList').innerHTML += `<div class="cc-item">Checking CC: ${cc}</div>`;
-            const response = await fetch('/check_cc', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cc, api_key })
-            });
-            const result = await response.json();
+            try {
+                const response = await fetch('/check_cc', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cc, api_key })
+                });
+                const result = await response.json();
+                addResult(cc, result);
 
-            document.getElementById('response').innerText += `Result for CC ${cc}: ${JSON.stringify(result, null, 2)}\\n`;
-
-            if (result.status === 'success') {
-                document.getElementById('response').innerText += `Card ${cc} added successfully. Stopping further checks.\\n`;
-                return;
+                if (result.status === 'success') return;
+                
+                currentIndex++;
+                await checkNextCC(api_key);
+            } catch (error) {
+                addResult(cc, {
+                    status: 'error',
+                    message: 'Request failed',
+                    timestamp: new Date().toLocaleTimeString()
+                });
+                currentIndex++;
+                await checkNextCC(api_key);
             }
-
-            currentIndex++;
-            await checkNextCC(api_key);
         }
     </script>
 </body>
