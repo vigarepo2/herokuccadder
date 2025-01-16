@@ -34,7 +34,39 @@ app.add_middleware(
 )
 
 HTML_TEMPLATE = '''
-<!-- Include your HTML template here, same as in the original code -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Heroku CC Checker</title>
+</head>
+<body>
+    <h1>Heroku CC Checker</h1>
+    <form id="ccForm">
+        <label for="cc">Credit Card:</label><br>
+        <input type="text" id="cc" name="cc"><br>
+        <label for="api_key">API Key:</label><br>
+        <input type="text" id="api_key" name="api_key"><br><br>
+        <button type="button" onclick="submitForm()">Check</button>
+    </form>
+    <div id="response"></div>
+
+    <script>
+        async function submitForm() {
+            const cc = document.getElementById('cc').value;
+            const api_key = document.getElementById('api_key').value;
+            const response = await fetch('/check_cc', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ cc, api_key })
+            });
+            const result = await response.json();
+            document.getElementById('response').innerText = JSON.stringify(result, null, 2);
+        }
+    </script>
+</body>
+</html>
 '''
 
 async def parseX(data, start, end):
@@ -101,7 +133,7 @@ async def heroku(cc, api_key, proxy=None):
             "guid": guid,
             "muid": muid,
             "sid": sid,
-            "key": "pk_live_your_key",
+            "key": "pk_live_51KlgQ9Lzb5a9EJ3IaC3yPd1x6i9e6YW9O8d5PzmgPw9IDHixpwQcoNWcklSLhqeHri28drHwRSNlf6g22ZdSBBff002VQu6YLn",
         }
 
         req2 = await make_request("https://api.stripe.com/v1/payment_methods", headers=headers2, data=data)
@@ -122,7 +154,7 @@ async def heroku(cc, api_key, proxy=None):
             "payment_method": pmid,
             "expected_payment_method_type": "card",
             "use_stripe_sdk": "true",
-            "key": "pk_live_your_key",
+            "key": "pk_live_51KlgQ9Lzb5a9EJ3IaC3yPd1x6i9e6YW9O8d5PzmgPw9IDHixpwQcoNWcklSLhqeHri28drHwRSNlf6g22ZdSBBff002VQu6YLn",
             "client_secret": client_secret,
         }
 
@@ -149,7 +181,7 @@ async def heroku(cc, api_key, proxy=None):
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return HTMLResponse(content=HTML_TEMPLATE)
 
 @app.post("/check_cc")
 async def check_cc(request: Request):
